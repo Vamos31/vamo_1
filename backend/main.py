@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
@@ -11,7 +13,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-engine = create_engine("mysql+pymysql://root:rootpass@localhost:3306/vamo")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://postgres:postgres@db:5432/postgres"
+)
+
+engine = create_engine(DATABASE_URL)
 
 
 @app.get("/")
