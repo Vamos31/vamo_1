@@ -2,3 +2,7 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 psycopg[binary]
+pydantic-settings
+alembic
+pyjwt
+pwdlib[argon2]

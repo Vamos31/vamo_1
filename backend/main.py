@@ -1,23 +1,23 @@
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+
+from app.core.config import settings
+from app.db import engine
+from app.routers import attendances, auth, events, invitations, members, teams
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,  # httpOnly Cookie を送受信するために必要
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://postgres:postgres@db:5432/postgres"
-)
-
-engine = create_engine(DATABASE_URL)
+for module in (auth, teams, members, invitations, events, attendances):
+    app.include_router(module.router)
 
 
 @app.get("/")
