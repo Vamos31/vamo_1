@@ -21,7 +21,8 @@ class TeamMember(Base):
     # 複合主キー: (user_id, team_id) の組み合わせが一意 = 同じ人を同じチームに二重登録できない
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), primary_key=True)
-    role: Mapped[str] = mapped_column(Enum("admin", "member", name="member_role",  native_enum=False))
+    role: Mapped[str] = mapped_column(Enum("admin", "member", name="member_role",
+                                     native_enum=False, create_constraint=True))
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
