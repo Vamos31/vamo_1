@@ -15,8 +15,14 @@ services:
       - ./backend:/backend
     ports:
       - "8000:8000"
+    # 起動時にマイグレーションを最新にしてから API を起動する
+    command: sh -c "alembic upgrade head && uvicorn main:app --reload --host 0.0.0.0 --port 8000"
     environment:
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/postgres
+      - FRONTEND_ORIGIN=http://localhost:3000
+      - COOKIE_SECURE=false
+      - SESSION_TTL_DAYS=14
+      - INVITATION_TTL_DAYS=7
     depends_on:
       db:
         condition: service_healthy

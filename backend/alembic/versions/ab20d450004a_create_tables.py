@@ -1,8 +1,8 @@
 """create tables
 
-Revision ID: cdc5d90c8461
+Revision ID: ab20d450004a
 Revises: 
-Create Date: 2026-11-20 07:21:04.225315
+Create Date: 2026-11-21 04:48:34.690891
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # Alembic が使うリビジョン識別子。
-revision: str = 'cdc5d90c8461'
+revision: str = 'ab20d450004a'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -25,7 +25,7 @@ def upgrade() -> None:
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('name', sa.Text(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_teams'))
     )
     op.create_table('users',
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
@@ -33,8 +33,8 @@ def upgrade() -> None:
     sa.Column('password_hash', sa.Text(), nullable=False),
     sa.Column('name', sa.Text(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email')
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_users')),
+    sa.UniqueConstraint('email', name=op.f('uq_users_email'))
     )
     op.create_table('events',
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
@@ -49,9 +49,11 @@ def upgrade() -> None:
     sa.Column('created_by', sa.BigInteger(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['team_id'], ['teams.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.CheckConstraint('attendance_deadline IS NULL OR attendance_deadline <= starts_at', name=op.f('ck_events_deadline_before_start')),
+    sa.CheckConstraint('ends_at IS NULL OR ends_at > starts_at', name=op.f('ck_events_ends_after_starts')),
+    sa.ForeignKeyConstraint(['created_by'], ['users.id'], name=op.f('fk_events_created_by_users')),
+    sa.ForeignKeyConstraint(['team_id'], ['teams.id'], name=op.f('fk_events_team_id_teams')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_events'))
     )
     op.create_index('ix_events_team_id_starts_at', 'events', ['team_id', 'starts_at'], unique=False)
     op.create_table('invitations',
@@ -59,43 +61,70 @@ def upgrade() -> None:
     sa.Column('team_id', sa.BigInteger(), nullable=False),
     sa.Column('token', sa.Text(), nullable=False),
     sa.Column('created_by', sa.BigInteger(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True),
-    sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['team_id'], ['teams.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('token')
+    sa.ForeignKeyConstraint(['created_by'], ['users.id'], name=op.f('fk_invitations_created_by_users')),
+    sa.ForeignKeyConstraint(['team_id'], ['teams.id'], name=op.f('fk_invitations_team_id_teams')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_invitations')),
+    sa.UniqueConstraint('token', name=op.f('uq_invitations_token'))
     )
+    op.create_index('ix_invitations_team_id_created_at', 'invitations', ['team_id', 'created_at'], unique=False)
+    op.create_table('sessions',
+    sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
+    sa.Column('token_hash', sa.Text(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('last_used_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('user_agent', sa.Text(), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=op.f('fk_sessions_user_id_users'), ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_sessions')),
+    sa.UniqueConstraint('token_hash', name=op.f('uq_sessions_token_hash'))
+    )
+    op.create_index(op.f('ix_sessions_expires_at'), 'sessions', ['expires_at'], unique=False)
+    op.create_index(op.f('ix_sessions_user_id'), 'sessions', ['user_id'], unique=False)
     op.create_table('team_members',
     sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('team_id', sa.BigInteger(), nullable=False),
     sa.Column('role', sa.Enum('admin', 'member', name='member_role', native_enum=False, create_constraint=True), nullable=False),
     sa.Column('joined_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('left_at', sa.DateTime(timezone=True), nullable=True),
-    sa.ForeignKeyConstraint(['team_id'], ['teams.id'], ),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('user_id', 'team_id')
+    sa.CheckConstraint('left_at IS NULL OR left_at >= joined_at', name=op.f('ck_team_members_left_after_joined')),
+    sa.ForeignKeyConstraint(['team_id'], ['teams.id'], name=op.f('fk_team_members_team_id_teams')),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=op.f('fk_team_members_user_id_users')),
+    sa.PrimaryKeyConstraint('user_id', 'team_id', name=op.f('pk_team_members'))
     )
+    op.create_index('ix_team_members_team_id_role', 'team_members', ['team_id', 'role'], unique=False)
     op.create_table('attendances',
+    sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('event_id', sa.BigInteger(), nullable=False),
     sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('status', sa.Enum('attending', 'not_attending', 'undecided', name='attendance_status', native_enum=False, create_constraint=True), nullable=False),
     sa.Column('comment', sa.Text(), nullable=True),
     sa.Column('updated_by', sa.BigInteger(), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['event_id'], ['events.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['updated_by'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('event_id', 'user_id')
+    sa.ForeignKeyConstraint(['event_id'], ['events.id'], name=op.f('fk_attendances_event_id_events'), ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['updated_by'], ['users.id'], name=op.f('fk_attendances_updated_by_users')),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=op.f('fk_attendances_user_id_users')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_attendances')),
+    sa.UniqueConstraint('event_id', 'user_id', name=op.f('uq_attendances_event_id_user_id'))
     )
+    op.create_index('ix_attendances_user_id', 'attendances', ['user_id'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """スキーマをダウングレードする。"""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index('ix_attendances_user_id', table_name='attendances')
     op.drop_table('attendances')
+    op.drop_index('ix_team_members_team_id_role', table_name='team_members')
     op.drop_table('team_members')
+    op.drop_index(op.f('ix_sessions_user_id'), table_name='sessions')
+    op.drop_index(op.f('ix_sessions_expires_at'), table_name='sessions')
+    op.drop_table('sessions')
+    op.drop_index('ix_invitations_team_id_created_at', table_name='invitations')
     op.drop_table('invitations')
     op.drop_index('ix_events_team_id_starts_at', table_name='events')
     op.drop_table('events')
